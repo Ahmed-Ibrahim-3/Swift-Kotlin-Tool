@@ -1,4 +1,5 @@
 import javax.swing.*;
+import javax.swing.text.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.WindowAdapter;
@@ -6,7 +7,7 @@ import java.awt.event.WindowEvent;
 
 public class ScriptWindow extends JFrame {
     private JTextPane editor;
-    private JTextArea output;
+    private Output output;
     private JButton runButton;
     private JButton stopButton;
     private JLabel statusLabel;
@@ -41,7 +42,10 @@ public class ScriptWindow extends JFrame {
         editor = new JTextPane();
         editor.setFont(new Font("Monospaced", Font.PLAIN, 12));
 
-        output = new JTextArea();
+        output = new Output(location -> {
+            navigateToLocation(location);}
+        );
+
         output.setEditable(false);
         output.setFont(new Font("Monospaced", Font.PLAIN, 12));
 
@@ -65,7 +69,7 @@ public class ScriptWindow extends JFrame {
         controlPanel.add(stopButton);
         controlPanel.add(statusLabel);
 
-        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, editorScrollPane, outputScrollPane);
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, editorScrollPane, outputScrollPane);
         splitPane.setResizeWeight(0.66);
 
         setLayout(new BorderLayout());
@@ -114,8 +118,8 @@ public class ScriptWindow extends JFrame {
         new Thread(() -> {
             int exitCode = curRunner.runScript(
                     scriptContent,
-                    line -> SwingUtilities.invokeLater(() -> appendOutput(line)),
-                    error -> SwingUtilities.invokeLater(() -> appendOutput("ERROR: " + error))
+                    line -> SwingUtilities.invokeLater(() -> output.appendLine(line)),
+                    error -> SwingUtilities.invokeLater(() -> output.appendLine("ERROR: " + error))
             );
 
             SwingUtilities.invokeLater(() -> {
@@ -130,13 +134,56 @@ public class ScriptWindow extends JFrame {
         if (curRunner.isRunning()) {
             curRunner.stopScript();
             statusLabel.setText("Stopped");
-            appendOutput("Script stopped manually");
+            output.appendLine("Script stopped manually");
         }
     }
 
-    private void appendOutput(String line) {
-        output.append(line + "\n");
-        output.setCaretPosition(output.getDocument().getLength());
+    private void navigateToLocation(ErrorParser.Location location) {
+        try {
+            int line = location.getLine() - 1;
+            int column = location.getColumn() - 1;
+
+            Document doc = editor.getDocument();
+
+            int startOffset = 0;
+            int lineCount = 0;
+
+            String text = doc.getText(0, doc.getLength());
+            String[] lines = text.split("\n", -1);
+
+            if (line < lines.length) {
+                for (int i = 0; i < line; i++) {
+                    startOffset += lines[i].length() + 1;
+                }
+
+                int targetColumn = Math.min(column, lines[line].length());
+                int targetOffset = startOffset + targetColumn;
+
+                editor.setCaretPosition(targetOffset);
+                editor.requestFocusInWindow();
+
+                highlightErrorLocation(targetOffset);
+            }
+        } catch (BadLocationException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void highlightErrorLocation(int offset) {
+        Highlighter highlighter = editor.getHighlighter();
+        Highlighter.HighlightPainter painter =
+                new DefaultHighlighter.DefaultHighlightPainter(new Color(255, 75, 75));
+        try {
+            final Object tag = highlighter.addHighlight(offset, offset + 1, painter);
+
+            Timer timer = new Timer(1500, e -> {
+                highlighter.removeHighlight(tag);
+            });
+            timer.setRepeats(false);
+            timer.start();
+        } catch (BadLocationException e) {
+            e.printStackTrace();
+        }
     }
 
 }
