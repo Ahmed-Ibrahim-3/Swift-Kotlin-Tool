@@ -24,7 +24,6 @@ public class KotlinRunner implements ScriptRunner {
     private long totalLines = 0;
     private long droppedLines = 0;
 
-    // Flag to check if readLine() is used in the script
     private boolean containsReadLine = false;
 
     public KotlinRunner() {
@@ -38,7 +37,6 @@ public class KotlinRunner implements ScriptRunner {
 
     @Override
     public boolean sendInput(String input) {
-        // Only send input if the process is alive.
         if (!running || currentProcess == null || !currentProcess.isAlive() || processInput == null) {
             System.out.println("[DEBUG] KotlinRunner.sendInput: Process not alive, ignoring input");
             return false;
@@ -56,7 +54,6 @@ public class KotlinRunner implements ScriptRunner {
 
     @Override
     public int runScript(String scriptContent, Consumer<String> outputConsumer, Consumer<String> errorConsumer) {
-        // Check if the script contains readLine() calls.
         containsReadLine = scriptContent.contains("readLine()");
         if (running) {
             errorConsumer.accept("A script is already running");
@@ -73,14 +70,12 @@ public class KotlinRunner implements ScriptRunner {
         final int[] exitCode = {-1};
         File tempFile = null;
         try {
-            // 1) Write the script to a temporary .kts file.
             tempFile = File.createTempFile("kotlin_script_", ".kts");
             tempFile.deleteOnExit();
             try (FileWriter writer = new FileWriter(tempFile)) {
                 writer.write(scriptContent);
             }
 
-            // 2) Start the process using kotlinc in script mode.
             ProcessBuilder processBuilder = new ProcessBuilder("kotlinc", "-script", tempFile.getAbsolutePath());
             processBuilder.redirectErrorStream(true);
             currentProcess = processBuilder.start();
@@ -90,7 +85,6 @@ public class KotlinRunner implements ScriptRunner {
                 outputConsumer.accept("Note: Script contains readLine() calls. You'll be prompted for input when needed.");
             }
 
-            // 3) Start reading process output on a background thread.
             Future<?> outputFuture = executorService.submit(() -> {
                 try (BufferedReader reader = new BufferedReader(
                         new InputStreamReader(currentProcess.getInputStream()), 8192)) {
@@ -104,7 +98,6 @@ public class KotlinRunner implements ScriptRunner {
                     long lastCharTime = System.currentTimeMillis();
                     int inactivityCount = 0;
 
-                    // Loop until the stream is fully drained.
                     while (true) {
                         if (reader.ready()) {
                             ch = reader.read();
@@ -152,7 +145,6 @@ public class KotlinRunner implements ScriptRunner {
                             }
                         } else {
                             if (currentProcess.isAlive()) {
-                                // Process is alive; check for inactivity to trigger input.
                                 long currentTime = System.currentTimeMillis();
                                 if (containsReadLine && !waitingForInput && (currentTime - lastCharTime > 500)) {
                                     inactivityCount++;
@@ -175,7 +167,6 @@ public class KotlinRunner implements ScriptRunner {
                                     Thread.currentThread().interrupt();
                                 }
                             } else {
-                                // Process has ended; drain any remaining output.
                                 int chDrain = reader.read();
                                 if (chDrain == -1) break;
                                 else {
@@ -194,7 +185,6 @@ public class KotlinRunner implements ScriptRunner {
                         }
                     }
 
-                    // Final flush of any buffered output.
                     if (lineBuffer.length() > 0) {
                         outputConsumer.accept(lineBuffer.toString());
                     }
@@ -208,10 +198,8 @@ public class KotlinRunner implements ScriptRunner {
                 }
             });
 
-            // 4) Wait for the process to complete.
             exitCode[0] = currentProcess.waitFor();
 
-            // Wait a bit more to capture any remaining output.
             try {
                 outputFuture.get(2, TimeUnit.SECONDS);
             } catch (TimeoutException e) {

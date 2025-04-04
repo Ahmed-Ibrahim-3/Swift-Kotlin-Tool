@@ -6,12 +6,15 @@ import Runners.ScriptRunner;
 import Runners.SwiftRunner;
 
 import javax.swing.*;
+import javax.swing.border.Border;
 import javax.swing.event.*;
 import javax.swing.plaf.basic.BasicComboBoxUI;
 import javax.swing.text.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.geom.Path2D;
+import java.io.FileWriter;
+import java.io.IOException;
 
 public class ScriptWindow extends JFrame {
     private JTextPane editor;
@@ -20,6 +23,9 @@ public class ScriptWindow extends JFrame {
     private JButton stopButton;
     private JLabel statusLabel;
     private JComboBox<String> languageSelector;
+
+    private JTextField filePathField;
+    private JButton saveButton;
 
     private ScriptRunner currentRunner;
     private SwiftRunner swiftRunner;
@@ -85,7 +91,6 @@ public class ScriptWindow extends JFrame {
         setLocationRelativeTo(null);
         setVisible(true);
 
-
         applySyntaxHighlighting();
 
         editor.requestFocusInWindow();
@@ -105,7 +110,7 @@ public class ScriptWindow extends JFrame {
         editor.setCaretColor(TEXT_COLOUR);
         editor.setSelectionColor(SELECTION_COLOUR);
         editor.setSelectedTextColor(TEXT_COLOUR);
-        editor.setMargin(new Insets(10,10,10,10));
+        editor.setMargin(new Insets(10, 10, 10, 10));
 
         output = new Output(this::navigateToLocation);
         output.setBackground(DARK_BACKGROUND);
@@ -113,7 +118,7 @@ public class ScriptWindow extends JFrame {
         output.setCaretColor(TEXT_COLOUR);
         output.setSelectionColor(SELECTION_COLOUR);
         output.setSelectedTextColor(TEXT_COLOUR);
-        output.setMargin(new Insets(10,10,10,10));
+        output.setMargin(new Insets(10, 10, 10, 10));
 
         output.setInputHandler(this::handleUserInput);
 
@@ -183,9 +188,24 @@ public class ScriptWindow extends JFrame {
         statusLabel = new JLabel("Ready");
         statusLabel.setForeground(TEXT_COLOUR);
         statusLabel.setFont(new Font("SF Pro", Font.PLAIN, 12));
-        statusLabel.setBorder(BorderFactory.createEmptyBorder(3, 5, 0,5 ));
-    }
+        statusLabel.setBorder(BorderFactory.createEmptyBorder(3, 5, 0, 5));
 
+        filePathField = new JTextField();
+        filePathField.setColumns(30);
+        filePathField.setBackground(CONTROL_BAR_BG);
+        filePathField.setForeground(TEXT_COLOUR);
+        filePathField.setCaretColor(TEXT_COLOUR);
+        filePathField.setToolTipText("Enter file path to save script");
+
+        saveButton = new JButton("Save");
+        saveButton.setBackground(SELECTION_COLOUR);
+        saveButton.setForeground(TEXT_COLOUR);
+        saveButton.setFocusPainted(false);
+        saveButton.setBorderPainted(false);
+        saveButton.setContentAreaFilled(true);
+        saveButton.setOpaque(true);
+        saveButton.addActionListener(e -> saveScript());
+    }
 
     private Icon Start() {
         return new Icon() {
@@ -205,7 +225,7 @@ public class ScriptWindow extends JFrame {
                 int x1 = x + 2;
                 int y1 = y + 2;
                 int x2 = x + width - 2;
-                int y2 = y + height/2;
+                int y2 = y + height / 2;
                 int x3 = x + 2;
                 int y3 = y + height - 2;
 
@@ -264,7 +284,6 @@ public class ScriptWindow extends JFrame {
                 g2d.setColor(outlineColor);
                 g2d.drawRoundRect(x, y, size, size, cornerRadius, cornerRadius);
 
-
                 g2d.dispose();
             }
 
@@ -314,10 +333,16 @@ public class ScriptWindow extends JFrame {
 
         Container contentPane = getContentPane();
         contentPane.setBackground(BORDER_COLOUR);
-
         setLayout(new BorderLayout());
         add(controlPanel, BorderLayout.NORTH);
         add(splitPane, BorderLayout.CENTER);
+
+        JPanel savePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        savePanel.setBackground(CONTROL_BAR_BG);
+        savePanel.add(new JLabel("Save to: "));
+        savePanel.add(filePathField);
+        savePanel.add(saveButton);
+        add(savePanel, BorderLayout.SOUTH);
     }
 
     private void setupListeners() {
@@ -390,7 +415,6 @@ public class ScriptWindow extends JFrame {
             });
         });
 
-        // IMPORTANT: Set the input handler explicitly
         output.setInputHandler((input) -> {
             System.out.println("[DEBUG] ScriptWindow: Input handler called with: " + input);
             if (currentRunner != null && currentRunner.isRunning()) {
@@ -420,7 +444,6 @@ public class ScriptWindow extends JFrame {
             currentRunner.sendInput(input);
         }
     }
-
 
     private void runScript() {
         output.clear();
@@ -486,7 +509,6 @@ public class ScriptWindow extends JFrame {
         }
     }
 
-
     private void highlightErrorLocation(int offset) {
         Highlighter highlighter = editor.getHighlighter();
         Highlighter.HighlightPainter painter =
@@ -504,4 +526,19 @@ public class ScriptWindow extends JFrame {
             e.printStackTrace();
         }
     }
+
+    private void saveScript() {
+        String filePath = filePathField.getText().trim();
+        if (filePath.isEmpty()) {
+            statusLabel.setText("Please enter a file path.");
+            return;
+        }
+        try (FileWriter writer = new FileWriter(filePath)) {
+            writer.write(editor.getText());
+            statusLabel.setText("Script saved successfully.");
+        } catch (IOException ex) {
+            statusLabel.setText("Error saving script: " + ex.getMessage());
+        }
+    }
 }
+
