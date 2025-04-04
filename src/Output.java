@@ -10,10 +10,13 @@ import java.util.function.Consumer;
  */
 public class Output extends JTextPane {
     private final Consumer<ErrorParser.Location> locationClickHandler;
+    private Consumer<String> inputHandler;
+    private boolean waitingForInput = false;
+    private int inputStartPosition = 0;
 
     private final SimpleAttributeSet normalAttributes = new SimpleAttributeSet();
-
     private final SimpleAttributeSet errorLocationAttributes = new SimpleAttributeSet();
+    private final SimpleAttributeSet inputAttributes = new SimpleAttributeSet();
 
     private static final int MAX_BUFFER_SIZE = 500000;
 
@@ -27,6 +30,9 @@ public class Output extends JTextPane {
 
         StyleConstants.setForeground(errorLocationAttributes, Color.RED);
         StyleConstants.setUnderline(errorLocationAttributes, true);
+
+        StyleConstants.setForeground(inputAttributes, new Color(0, 180, 0));
+        StyleConstants.setBold(inputAttributes, true);
 
         addMouseListener(new MouseAdapter() {
             @Override
@@ -47,6 +53,62 @@ public class Output extends JTextPane {
                 }
             }
         });
+
+        addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent e) {
+                if (waitingForInput && e.getKeyCode() == KeyEvent.VK_ENTER) {
+                    submitInput();
+                    e.consume();
+                }
+            }
+        });
+    }
+
+    public void setInputHandler(Consumer<String> inputHandler) {
+        this.inputHandler = inputHandler;
+    }
+
+    public void startWaitingForInput() {
+        System.out.println("[DEBUG] Output: startWaitingForInput called");
+        SwingUtilities.invokeLater(() -> {
+            System.out.println("[DEBUG] Output: Setting up input mode");
+            waitingForInput = true;
+            setEditable(true);
+            inputStartPosition = getDocument().getLength();
+
+            try {
+                System.out.println("[DEBUG] Output: Adding input prompt");
+                appendText("> ", inputAttributes);
+
+                setCaretPosition(getDocument().getLength());
+                requestFocusInWindow();
+                System.out.println("[DEBUG] Output: Input mode setup complete");
+            } catch (Exception e) {
+                System.err.println("[ERROR] Output: Exception in startWaitingForInput: " + e.getMessage());
+                e.printStackTrace();
+            }
+        });
+    }
+
+    public void stopWaitingForInput() {
+        SwingUtilities.invokeLater(() -> {
+            waitingForInput = false;
+            setEditable(false);
+        });
+    }
+
+    private void submitInput() {
+        if (inputHandler != null && waitingForInput) {
+            try {
+                String userInput = getText(inputStartPosition, getDocument().getLength() - inputStartPosition).replaceAll(">", "");
+                appendText("\n", normalAttributes);
+                inputHandler.accept(userInput);
+                stopWaitingForInput();
+            } catch (BadLocationException e) {
+                System.err.println("Error getting input text: " + e.getMessage());
+            }
+        }
     }
 
     public void appendLine(String line) {
@@ -105,6 +167,19 @@ public class Output extends JTextPane {
             scrollToBottom();
         });
     }
+
+    public void appendText(String text, AttributeSet attributes) {
+        SwingUtilities.invokeLater(() -> {
+            try {
+                StyledDocument doc = getStyledDocument();
+                doc.insertString(doc.getLength(), text, attributes);
+                scrollToBottom();
+            } catch (BadLocationException e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
     private void scrollToBottom() {
         Document doc = getDocument();
         Rectangle visible = getVisibleRect();

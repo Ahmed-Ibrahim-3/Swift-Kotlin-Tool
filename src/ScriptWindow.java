@@ -22,8 +22,8 @@ public class ScriptWindow extends JFrame {
     private JComboBox<String> languageSelector;
 
     private ScriptRunner currentRunner;
-    private final SwiftRunner swiftRunner;
-    private final KotlinRunner kotlinRunner;
+    private SwiftRunner swiftRunner;
+    private KotlinRunner kotlinRunner;
 
     private final SwiftHighlighter swiftHighlighter;
     private final KotlinHighlighter kotlinHighlighter;
@@ -68,9 +68,6 @@ public class ScriptWindow extends JFrame {
         } catch (Exception e) {
             e.printStackTrace();
         }
-
-        swiftRunner = new SwiftRunner();
-        kotlinRunner = new KotlinRunner();
         currentRunner = swiftRunner;
 
         swiftHighlighter = new SwiftHighlighter();
@@ -78,6 +75,7 @@ public class ScriptWindow extends JFrame {
         currentHighlighter = swiftHighlighter;
 
         initComponents();
+        initRunners();
         setupLayout();
         setupListeners();
 
@@ -87,7 +85,8 @@ public class ScriptWindow extends JFrame {
         setLocationRelativeTo(null);
         setVisible(true);
 
-        applyCurrentSyntaxHighlighting();
+
+        applySyntaxHighlighting();
 
         editor.requestFocusInWindow();
     }
@@ -100,11 +99,13 @@ public class ScriptWindow extends JFrame {
     private void initComponents() {
         editor = new JTextPane();
         editor.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        editor.setText("/* Enter your code here */");
         editor.setBackground(DARK_BACKGROUND);
         editor.setForeground(TEXT_COLOUR);
         editor.setCaretColor(TEXT_COLOUR);
         editor.setSelectionColor(SELECTION_COLOUR);
         editor.setSelectedTextColor(TEXT_COLOUR);
+        editor.setMargin(new Insets(10,10,10,10));
 
         output = new Output(this::navigateToLocation);
         output.setBackground(DARK_BACKGROUND);
@@ -112,6 +113,9 @@ public class ScriptWindow extends JFrame {
         output.setCaretColor(TEXT_COLOUR);
         output.setSelectionColor(SELECTION_COLOUR);
         output.setSelectedTextColor(TEXT_COLOUR);
+        output.setMargin(new Insets(10,10,10,10));
+
+        output.setInputHandler(this::handleUserInput);
 
         languageSelector = new JComboBox<>(new String[]{"Swift", "Kotlin"});
         languageSelector.setForeground(TEXT_COLOUR);
@@ -320,18 +324,21 @@ public class ScriptWindow extends JFrame {
         editor.getDocument().addDocumentListener(new DocumentListener() {
             @Override
             public void insertUpdate(DocumentEvent e) {
-                applyCurrentSyntaxHighlighting();
+                applySyntaxHighlighting();
             }
 
             @Override
             public void removeUpdate(DocumentEvent e) {
-                applyCurrentSyntaxHighlighting();
+                applySyntaxHighlighting();
             }
 
             @Override
             public void changedUpdate(DocumentEvent e) {
             }
         });
+
+        swiftRunner.setInputRequiredCallback(() -> output.startWaitingForInput());
+        kotlinRunner.setInputRequiredCallback(() -> output.startWaitingForInput());
 
         languageSelector.addActionListener((ActionEvent e) -> {
             String selectedLanguage = (String) languageSelector.getSelectedItem();
@@ -342,7 +349,7 @@ public class ScriptWindow extends JFrame {
                 currentRunner = kotlinRunner;
                 currentHighlighter = kotlinHighlighter;
             }
-            applyCurrentSyntaxHighlighting();
+            applySyntaxHighlighting();
         });
 
         runButton.addActionListener((ActionEvent e) -> {
@@ -362,7 +369,37 @@ public class ScriptWindow extends JFrame {
         });
     }
 
-    private void applyCurrentSyntaxHighlighting() {
+    private void initRunners() {
+        swiftRunner = new SwiftRunner();
+        kotlinRunner = new KotlinRunner();
+        currentRunner = swiftRunner;
+
+        swiftRunner.setInputRequiredCallback(() -> {
+            System.out.println("[DEBUG] ScriptWindow: Swift input callback triggered");
+            SwingUtilities.invokeLater(() -> {
+                output.startWaitingForInput();
+                statusLabel.setText("Waiting for input...");
+            });
+        });
+
+        kotlinRunner.setInputRequiredCallback(() -> {
+            System.out.println("[DEBUG] ScriptWindow: Kotlin input callback triggered");
+            SwingUtilities.invokeLater(() -> {
+                output.startWaitingForInput();
+                statusLabel.setText("Waiting for input...");
+            });
+        });
+
+        // IMPORTANT: Set the input handler explicitly
+        output.setInputHandler((input) -> {
+            System.out.println("[DEBUG] ScriptWindow: Input handler called with: " + input);
+            if (currentRunner != null && currentRunner.isRunning()) {
+                currentRunner.sendInput(input);
+            }
+        });
+    }
+
+    private void applySyntaxHighlighting() {
         SwingUtilities.invokeLater(() -> {
             int caretPosition = editor.getCaretPosition();
 
@@ -377,6 +414,13 @@ public class ScriptWindow extends JFrame {
             }
         });
     }
+
+    private void handleUserInput(String input) {
+        if (currentRunner != null && currentRunner.isRunning()) {
+            currentRunner.sendInput(input);
+        }
+    }
+
 
     private void runScript() {
         output.clear();
@@ -398,6 +442,7 @@ public class ScriptWindow extends JFrame {
                 runButton.setEnabled(true);
                 stopButton.setEnabled(false);
                 statusLabel.setText("Finished (exit code: " + exitCode + ")");
+                output.stopWaitingForInput();
                 System.gc();
             });
         }).start();
