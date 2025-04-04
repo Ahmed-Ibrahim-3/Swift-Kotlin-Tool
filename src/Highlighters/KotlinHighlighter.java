@@ -13,7 +13,7 @@ public class KotlinHighlighter extends ScriptHighlighter {
 
     public KotlinHighlighter() {
         super(
-                new Color(0,0,255),
+                new Color(0,85,250),
                 new Color(139,0,0),
                 new Color(128,0,128),
                 new Color(255,140,0),

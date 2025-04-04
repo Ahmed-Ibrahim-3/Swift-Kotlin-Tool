@@ -157,10 +157,6 @@ public class KotlinRunner implements ScriptRunner {
         return running;
     }
 
-    /**
-     * Properly shuts down the executor service.
-     * Should be called when the application closes.
-     */
     public void shutdown() {
         executorService.shutdown();
         try {
