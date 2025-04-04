@@ -9,4 +9,5 @@ public interface ScriptRunner {
 
     boolean isRunning();
 
+    void setMaxOutputLines(int maxOutputLines);
 }

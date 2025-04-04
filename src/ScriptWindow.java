@@ -43,6 +43,8 @@ public class ScriptWindow extends JFrame {
         setupLayout();
         setupListeners();
 
+        setupMemorySettings();
+
         setSize(800, 600);
         setLocationRelativeTo(null);
         setVisible(true);
@@ -50,6 +52,11 @@ public class ScriptWindow extends JFrame {
         applyCurrentSyntaxHighlighting();
 
         editor.requestFocusInWindow();
+    }
+
+    private void setupMemorySettings() {
+        System.setProperty("sun.java2d.nodraw", "true");
+        System.setProperty("swing.aatext", "true");
     }
 
     private void initComponents() {
@@ -167,6 +174,7 @@ public class ScriptWindow extends JFrame {
                 runButton.setEnabled(true);
                 stopButton.setEnabled(false);
                 statusLabel.setText("Finished (exit code: " + exitCode + ")");
+                System.gc();
             });
         }).start();
     }

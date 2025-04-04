@@ -15,6 +15,10 @@ public class Output extends JTextPane {
 
     private final SimpleAttributeSet errorLocationAttributes = new SimpleAttributeSet();
 
+    private static final int MAX_BUFFER_SIZE = 500000;
+
+    private boolean trimming = false;
+
     public Output(Consumer<ErrorParser.Location> locationClickHandler) {
         this.locationClickHandler = locationClickHandler;
 
@@ -48,37 +52,73 @@ public class Output extends JTextPane {
     public void appendLine(String line) {
         ErrorParser.Location location = ErrorParser.parseLocation(line);
 
-        StyledDocument doc = getStyledDocument();
+        SwingUtilities.invokeLater(() -> {
+            StyledDocument doc = getStyledDocument();
+
+            if (doc.getLength() > MAX_BUFFER_SIZE && !trimming) {
+                trimming = true;
+
+                try {
+                    if (!line.contains("--- Output limit reached")) {
+                        doc.insertString(doc.getLength(),
+                                "\n--- Document size limit reached, older content will be removed ---\n",
+                                normalAttributes);
+                    }
+
+                    int trimPoint = doc.getLength() / 4;
+                    doc.remove(0, trimPoint);
+
+                } catch (BadLocationException e) {
+                    System.err.println("Error trimming document: " + e.getMessage());
+                } finally {
+                    trimming = false;
+                }
+            }
+
+            try {
+                if (location != null) {
+                    int locStart = line.indexOf(location.getFullMatch());
+                    int locEnd = locStart + location.getFullMatch().length();
+
+                    if (locStart > 0) {
+                        doc.insertString(doc.getLength(), line.substring(0, locStart), normalAttributes);
+                    }
+
+                    AttributeSet locationAttributes = getErrorLocationAttributes(location);
+                    doc.insertString(doc.getLength(), line.substring(locStart, locEnd), locationAttributes);
+
+                    if (locEnd < line.length()) {
+                        doc.insertString(doc.getLength(), line.substring(locEnd), normalAttributes);
+                    }
+                } else {
+                    doc.insertString(doc.getLength(), line, normalAttributes);
+                }
+
+                doc.insertString(doc.getLength(), "\n", normalAttributes);
+            } catch (BadLocationException e) {
+                try {
+                    doc.insertString(doc.getLength(), line + "\n", normalAttributes);
+                } catch (BadLocationException ex) {
+                    ex.printStackTrace();
+                }
+            }
+            scrollToBottom();
+        });
+    }
+    private void scrollToBottom() {
+        Document doc = getDocument();
+        Rectangle visible = getVisibleRect();
 
         try {
-            if (location != null) {
-                int locStart = line.indexOf(location.getFullMatch());
-                int locEnd = locStart + location.getFullMatch().length();
-
-                if (locStart > 0) {
-                    doc.insertString(doc.getLength(), line.substring(0, locStart), normalAttributes);
-                }
-
-                AttributeSet locationAttributes = getErrorLocationAttributes(location);
-                doc.insertString(doc.getLength(), line.substring(locStart, locEnd), locationAttributes);
-
-                if (locEnd < line.length()) {
-                    doc.insertString(doc.getLength(), line.substring(locEnd), normalAttributes);
-                }
-            } else {
-                doc.insertString(doc.getLength(), line, normalAttributes);
+            Rectangle lastRect = (Rectangle) modelToView2D(doc.getLength());
+            if (lastRect != null &&
+                    (lastRect.y - (visible.y + visible.height) > 100 ||
+                            lastRect.y < visible.y)) {
+                setCaretPosition(doc.getLength());
             }
-
-            doc.insertString(doc.getLength(), "\n", normalAttributes);
         } catch (BadLocationException e) {
-            try {
-                doc.insertString(doc.getLength(), line + "\n", normalAttributes);
-            } catch (BadLocationException ex) {
-                ex.printStackTrace();
-            }
+            setCaretPosition(doc.getLength());
         }
-
-        setCaretPosition(doc.getLength());
     }
 
     public void clear() {
