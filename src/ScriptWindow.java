@@ -1,9 +1,15 @@
+import Highlighters.KotlinHighlighter;
+import Highlighters.ScriptHighlighter;
+import Highlighters.SwiftHighlighter;
+import Runners.KotlinRunner;
+import Runners.ScriptRunner;
+import Runners.SwiftRunner;
+
 import javax.swing.*;
+import javax.swing.event.*;
 import javax.swing.text.*;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
+import java.awt.event.*;
 
 public class ScriptWindow extends JFrame {
     private JTextPane editor;
@@ -13,11 +19,13 @@ public class ScriptWindow extends JFrame {
     private JLabel statusLabel;
     private JComboBox<String> languageSelector;
 
-    private ScriptRunner curRunner;
+    private ScriptRunner currentRunner;
     private SwiftRunner swiftRunner;
     private KotlinRunner kotlinRunner;
-    String[] languages = {"Swift", "Kotlin"};
 
+    private SwiftHighlighter swiftHighlighter;
+    private KotlinHighlighter kotlinHighlighter;
+    private ScriptHighlighter currentHighlighter;
 
     public ScriptWindow() {
         super("Script Executor");
@@ -25,7 +33,11 @@ public class ScriptWindow extends JFrame {
 
         swiftRunner = new SwiftRunner();
         kotlinRunner = new KotlinRunner();
-        curRunner = swiftRunner;
+        currentRunner = swiftRunner;
+
+        swiftHighlighter = new SwiftHighlighter();
+        kotlinHighlighter = new KotlinHighlighter();
+        currentHighlighter = swiftHighlighter;
 
         initComponents();
         setupLayout();
@@ -35,6 +47,8 @@ public class ScriptWindow extends JFrame {
         setLocationRelativeTo(null);
         setVisible(true);
 
+        applyCurrentSyntaxHighlighting();
+
         editor.requestFocusInWindow();
     }
 
@@ -42,20 +56,14 @@ public class ScriptWindow extends JFrame {
         editor = new JTextPane();
         editor.setFont(new Font("Monospaced", Font.PLAIN, 12));
 
-        output = new Output(location -> {
-            navigateToLocation(location);}
-        );
+        output = new Output(this::navigateToLocation);
 
-        output.setEditable(false);
-        output.setFont(new Font("Monospaced", Font.PLAIN, 12));
-
-        languageSelector = new JComboBox<>(languages);
+        languageSelector = new JComboBox<>(new String[]{"Swift", "Kotlin"});
         runButton = new JButton("Run");
         stopButton = new JButton("Stop");
         stopButton.setEnabled(false);
 
         statusLabel = new JLabel("Ready");
-
     }
 
     private void setupLayout() {
@@ -63,14 +71,14 @@ public class ScriptWindow extends JFrame {
         JScrollPane outputScrollPane = new JScrollPane(output);
 
         JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        controlPanel.add(new JLabel("Language: "));
+        controlPanel.add(new JLabel("Language:"));
         controlPanel.add(languageSelector);
         controlPanel.add(runButton);
         controlPanel.add(stopButton);
         controlPanel.add(statusLabel);
 
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, editorScrollPane, outputScrollPane);
-        splitPane.setResizeWeight(0.66);
+        splitPane.setResizeWeight(0.6);
 
         setLayout(new BorderLayout());
         add(controlPanel, BorderLayout.NORTH);
@@ -78,15 +86,32 @@ public class ScriptWindow extends JFrame {
     }
 
     private void setupListeners() {
+        editor.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                applyCurrentSyntaxHighlighting();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                applyCurrentSyntaxHighlighting();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+            }
+        });
 
         languageSelector.addActionListener((ActionEvent e) -> {
             String selectedLanguage = (String) languageSelector.getSelectedItem();
-            assert selectedLanguage != null;
-            if (selectedLanguage.equals("Swift")) {
-                curRunner = swiftRunner;
-            } else if (selectedLanguage.equals("Kotlin")) {
-                curRunner = kotlinRunner;
+            if ("Swift".equals(selectedLanguage)) {
+                currentRunner = swiftRunner;
+                currentHighlighter = swiftHighlighter;
+            } else if ("Kotlin".equals(selectedLanguage)) {
+                currentRunner = kotlinRunner;
+                currentHighlighter = kotlinHighlighter;
             }
+            applyCurrentSyntaxHighlighting();
         });
 
         runButton.addActionListener((ActionEvent e) -> {
@@ -106,8 +131,24 @@ public class ScriptWindow extends JFrame {
         });
     }
 
+    private void applyCurrentSyntaxHighlighting() {
+        SwingUtilities.invokeLater(() -> {
+            int caretPosition = editor.getCaretPosition();
+
+            if (currentHighlighter != null) {
+                currentHighlighter.highlight(editor.getStyledDocument());
+            }
+
+            try {
+                editor.setCaretPosition(caretPosition);
+            } catch (IllegalArgumentException e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
     private void runScript() {
-        output.setText("");
+        output.clear();
 
         runButton.setEnabled(false);
         stopButton.setEnabled(true);
@@ -116,7 +157,7 @@ public class ScriptWindow extends JFrame {
         String scriptContent = editor.getText();
 
         new Thread(() -> {
-            int exitCode = curRunner.runScript(
+            int exitCode = currentRunner.runScript(
                     scriptContent,
                     line -> SwingUtilities.invokeLater(() -> output.appendLine(line)),
                     error -> SwingUtilities.invokeLater(() -> output.appendLine("ERROR: " + error))
@@ -131,10 +172,9 @@ public class ScriptWindow extends JFrame {
     }
 
     private void stopScript() {
-        if (curRunner.isRunning()) {
-            curRunner.stopScript();
-            statusLabel.setText("Stopped");
-            output.appendLine("Script stopped manually");
+        if (currentRunner.isRunning()) {
+            currentRunner.stopScript();
+            output.appendLine("\nScript execution stopped manually.");
         }
     }
 
@@ -169,10 +209,12 @@ public class ScriptWindow extends JFrame {
         }
     }
 
+
     private void highlightErrorLocation(int offset) {
         Highlighter highlighter = editor.getHighlighter();
         Highlighter.HighlightPainter painter =
-                new DefaultHighlighter.DefaultHighlightPainter(new Color(255, 75, 75));
+                new DefaultHighlighter.DefaultHighlightPainter(new Color(255, 80, 80));
+
         try {
             final Object tag = highlighter.addHighlight(offset, offset + 1, painter);
 
@@ -185,5 +227,4 @@ public class ScriptWindow extends JFrame {
             e.printStackTrace();
         }
     }
-
 }

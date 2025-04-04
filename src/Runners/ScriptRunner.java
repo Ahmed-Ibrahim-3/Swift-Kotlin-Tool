@@ -1,3 +1,5 @@
+package Runners;
+
 import java.util.function.Consumer;
 
 public interface ScriptRunner {
